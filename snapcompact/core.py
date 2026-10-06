@@ -20,12 +20,24 @@ def new_state():
 
 def compact(state, now, window, rid, counter):
     """把增量并进基准视图，登记一次压缩。"""
-    state["merged"] = {}
-    for d in reversed(state["deltas"]):
+    if rid in state["compactions"]:
+        return {"keys": len(state["merged"]), "history": len(state["history"])}
+    ready = []
+    pending = []
+    for d in state["deltas"]:
         counter.scanned += 1
+        if d["tick"] <= now:
+            ready.append(d)
+        else:
+            pending.append(d)
+    ready.sort(key=lambda d: d["tick"])
+    for d in ready:
         state["merged"][d["key"]] = d["value"]
+    state["applied"] += len(ready)
+    state["deltas"] = pending
     state["compactions"][rid] = now
     state["history"].append({"tick": now, "keys": len(state["merged"])})
+    state["history"] = [h for h in state["history"] if now - window <= h["tick"] <= now]
     return {"keys": len(state["merged"]), "history": len(state["history"])}
 
 
